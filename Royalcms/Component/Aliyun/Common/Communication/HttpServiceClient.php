@@ -6,61 +6,61 @@ use Royalcms\Component\Aliyun\Common\Exceptions\ClientException;
 use Royalcms\Component\Aliyun\Common\Utilities\AssertUtils;
 use Royalcms\Component\Aliyun\Common\Utilities\HttpHeaders;
 use Royalcms\Component\Aliyun\Common\Models\ServiceOptions;
-use Guzzle\Common\Event;
 use Royalcms\Component\Aliyun\Common\Communication\ServiceClientInterface;
-use Guzzle\Http\EntityBody;
-use Guzzle\Http\Message\EntityEnclosingRequest;
-use Guzzle\Http\ReadLimitEntityBody;
+use GuzzleHttp\Stream\Stream;
+use GuzzleHttp\Stream\LimitStream;
+use GuzzleHttp\RequestOptions;
+use GuzzleHttp\Psr7\Request;
+use Psr\Http\Message\RequestInterface;
 
 class HttpServiceClient implements ServiceClientInterface {
 	/**
-	 * @var \Guzzle\Http\Client.
+	 * @var \GuzzleHttp\Client.
 	 */
 	protected $client;
 
 	public function __construct($config = array()) {
 
         // Create internal client.
-		$this->client = new \Guzzle\Http\Client(null, array(
-		    'curl.options' => $config[ServiceOptions::CURL_OPTIONS],
-        ));
+		$this->client = new \GuzzleHttp\Client([
+            'curl.options' => $config[ServiceOptions::CURL_OPTIONS],
+            'allow_redirects.strict' => true, // Strict redirect.
+            'stream' => true
+        ]);
 
-        // Strict redirect. 
-        $this->client->getConfig()->set('request.params', array(
-            'redirect.strict' => true
-        ));
-
-        // Stop error dispatcher.
-		$this->client->getEventDispatcher()->addListener('request.error', function(Event $event) {
-			$event->stopPropagation();
-		});
 	}
-	
+
+    /**
+     * Send Request
+     * @param HttpRequest $request
+     * @param ExecutionContext $context
+     * @return HttpResponse
+     */
 	public function sendRequest(HttpRequest $request, ExecutionContext $context) {
         $response = new HttpResponse($request);
         try {
 
             $coreRequest = $this->buildCoreRequest($request);
-            $coreResponse = $coreRequest->send();
+            $coreResponse = $this->client->send($coreRequest, ['timeout' => 5]);
             $coreResponse->getBody()->rewind();
 
             $response->setStatusCode($coreResponse->getStatusCode());
-            $response->setUri($coreRequest->getUrl());
-            $response->setContent($coreResponse->getBody()->getStream());
+            $response->setUri($coreRequest->getUri());
+            $response->setContent($coreResponse->getBody()->getContents());
 
             // Replace resource of Guzzle Stream to forbidden resource close when Stream is released.
             $fakedResource = fopen('php://memory', 'r+');
             if ($coreResponse->getBody() !== null) {
                 $coreResponse
                     ->getBody()
-                    ->setStream($fakedResource);
+                    ->write($fakedResource);
             }
 
             // If request has entity, replace resource of Guzzle Stream to forbidden resource close when Stream is released.
-            if ($coreRequest instanceof EntityEnclosingRequest && $coreRequest->getBody() !== null) {
+            if ($coreRequest instanceof RequestInterface && $coreRequest->getBody() !== null) {
                 $coreRequest
                     ->getBody()
-                    ->setStream($fakedResource);
+                    ->write($fakedResource);
             }
 
             fclose($fakedResource);
@@ -80,7 +80,11 @@ class HttpServiceClient implements ServiceClientInterface {
             throw new ClientException($e->getMessage(), $e);
         }
 	}
-	
+
+    /**
+     * @param HttpRequest $request
+     * @return \GuzzleHttp\Psr7\Request
+     */
 	protected function buildCoreRequest(HttpRequest $request) {
 
         $headers = $request->getHeaders();
@@ -99,14 +103,14 @@ class HttpServiceClient implements ServiceClientInterface {
         $entity = null;
         $headers[HttpHeaders::CONTENT_LENGTH] = (string) $contentLength;
         if ($body !== null) {
-            $entity = new ReadLimitEntityBody(EntityBody::factory($body), $contentLength,
+            $entity = new LimitStream(Stream::factory($body), $contentLength,
                 $request->getOffset() !== false ? $request->getOffset() : 0);
         }
 
-        $coreRequest = $this->client->createRequest($request->getMethod(), $request->getFullUrl(), $headers, $entity);
+        $coreRequest = new Request($request->getMethod(), $request->getFullUrl(), $headers, $entity);
 
         if ($request->getResponseBody() != null) {
-            $coreRequest->setResponseBody($request->getResponseBody());
+            $coreRequest->withBody($request->getResponseBody());
         }
 
         return $coreRequest;
