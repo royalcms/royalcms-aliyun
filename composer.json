@@ -16,7 +16,7 @@
     ],
     "require": {
         "php": ">=5.5.9",
-        "guzzlehttp/streams": "~3.0"
+        "ezimuel/guzzlestreams": "^3.0.1"
     },
     "autoload": {
         "psr-4": {
