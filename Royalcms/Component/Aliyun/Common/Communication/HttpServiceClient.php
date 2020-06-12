@@ -42,36 +42,37 @@ class HttpServiceClient implements ServiceClientInterface {
 
             $coreRequest = $this->buildCoreRequest($request);
             $coreResponse = $this->client->send($coreRequest, ['timeout' => 5]);
-            $coreResponse->getBody()->rewind();
+//            $coreResponse->getBody()->rewind();
+            $coreResponse->getBody();
 
             $response->setStatusCode($coreResponse->getStatusCode());
             $response->setUri($coreRequest->getUri());
             $response->setContent($coreResponse->getBody()->getContents());
 
-            // Replace resource of Guzzle Stream to forbidden resource close when Stream is released.
-            $fakedResource = fopen('php://memory', 'r+');
-            if ($coreResponse->getBody() !== null) {
-                $coreResponse
-                    ->getBody()
-                    ->write($fakedResource);
-            }
+//            // Replace resource of Guzzle Stream to forbidden resource close when Stream is released.
+//            $fakedResource = fopen('php://memory', 'r+');
+////            if ($coreResponse->getBody() !== null) {
+////                $coreResponse
+////                    ->getBody()
+////                    ->write($fakedResource);
+////            }
+//
+//            // If request has entity, replace resource of Guzzle Stream to forbidden resource close when Stream is released.
+//            if ($coreRequest instanceof RequestInterface && $coreRequest->getBody() !== null) {
+//                $coreRequest
+//                    ->getBody()
+//                    ->write($fakedResource);
+//            }
+//
+//            fclose($fakedResource);
 
-            // If request has entity, replace resource of Guzzle Stream to forbidden resource close when Stream is released.
-            if ($coreRequest instanceof RequestInterface && $coreRequest->getBody() !== null) {
-                $coreRequest
-                    ->getBody()
-                    ->write($fakedResource);
-            }
-
-            fclose($fakedResource);
-
-            for ($iter = $coreResponse->getHeaders()->getIterator();
-                    $iter->valid();
-                    $iter->next()) {
-
-                $header = $iter->current();
-                $response->addHeader($header->getName(), (string) $header);
-            }
+//            for ($iter = $coreResponse->getHeaders()->getIterator();
+//                    $iter->valid();
+//                    $iter->next()) {
+//
+//                $header = $iter->current();
+//                $response->addHeader($header->getName(), (string) $header);
+//            }
 
             $request->setResponse($response);
             return $response;
